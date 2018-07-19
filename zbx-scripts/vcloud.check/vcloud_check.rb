@@ -232,11 +232,11 @@ module VCloud
           'command' => "/org/#{orgId}"
         }
         # disabled due to speed and quotes needs escaping
-        response, headers = send_request(params)
-        fullname = response.css("FullName").first
-        fullname = fullname.text unless fullname.nil?
-        results[fullname] = orgId
-        #results[org['name']] = orgId
+        # response, headers = send_request(params)
+        # fullname = response.css("FullName").first
+        # fullname = fullname.text unless fullname.nil?
+        # results[fullname] = orgId
+        results[org['name']] = orgId
 
       end
       results
@@ -293,10 +293,12 @@ module VCloud
           'method' => :get,
           'command' => "/org/#{value}"
         }
-
+        puts "[DEBUG: ORG: #{key}]" if OPTIONS[:debug]
         response, headers = send_request(params)
         response.css("Link[type='application/vnd.vmware.vcloud.vdc+xml']").each do |item|
           vdcs[item['name']] = item['href'].gsub("#{@api_url}/vdc/", "")
+          puts "[DEBUG: ORG: #{key}: VDC: #{item['name']}]" if OPTIONS[:debug]
+
         end
 
       end
