@@ -90,6 +90,7 @@ QUERIES = %w(
   vdc.storage_profile_default
   providervdcs.discovery
   providervdc.query
+  vdc.query
 )
 
 class Hash
@@ -232,11 +233,11 @@ module VCloud
           'command' => "/org/#{orgId}"
         }
         # disabled due to speed and quotes needs escaping
-        # response, headers = send_request(params)
-        # fullname = response.css("FullName").first
-        # fullname = fullname.text unless fullname.nil?
-        # results[fullname] = orgId
-        results[org['name']] = orgId
+        response, headers = send_request(params)
+        fullname = response.css("FullName").first
+        fullname = fullname.text unless fullname.nil?
+        results[fullname] = orgId
+        #results[org['name']] = orgId
 
       end
       results
@@ -454,7 +455,7 @@ module VCloud
 
     end
 
-    def providervdc(providervdcId)
+    def providervdc_query(providervdcId)
         params = {
           'method' => :get,
           'command' => "/query?type=providerVdc&filter=id==#{providervdcId}"
@@ -471,6 +472,25 @@ module VCloud
         pvdc
 
     end
+
+    def vdc_query(vdcId)
+        params = {
+          'method' => :get,
+          'command' => "/admin/extension/orgVdcs/query?filter=id==#{vdcId}"
+        }
+        response, headers = send_request(params)
+        pvdc = response.css('AdminVdcRecord')
+
+        # {
+        #   :cpuAllocationMhz => pvdc.cpuAllocationMhz,
+        #   :cpuLimitMhz => pvdc.cpuLimitMhz,
+        #   :cpuUsedMhz => pvdc.cpuUsedMhz
+
+        # }
+        pvdc
+
+    end
+
 
     private
       ##
@@ -667,7 +687,14 @@ if QUERIES.include? OPTIONS[:query]
   when /providervdc.query/
     #json = {data:[]}
     items = OPTIONS[:items].split(/,/)
-    query = session.providervdc(items[0]) unless OPTIONS[:items].nil?
+    query = session.providervdc_query(items[0]) unless OPTIONS[:items].nil?
+  
+    puts query
+
+  when /^vdc.query/
+    #json = {data:[]}
+    items = OPTIONS[:items].split(/,/)
+    query = session.vdc_query(items[0]) unless OPTIONS[:items].nil?
   
     puts query
 
