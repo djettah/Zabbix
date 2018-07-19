@@ -49,6 +49,7 @@ OPTIONS
            vdc.storage_profile_enabled
            vdc.storage_profile_default
     -i, --items ITEMs                Comma separated list of items to query on vCloud
+    -d, --debug                      Debug mode
 =end
 
 require 'rubygems'
@@ -87,6 +88,7 @@ QUERIES = %w(
   vdc.storage_profile_limit
   vdc.storage_profile_enabled
   vdc.storage_profile_default
+  providervdcs.discovery
   providervdc.query
 )
 
@@ -229,13 +231,16 @@ module VCloud
           'method' => :get,
           'command' => "/org/#{orgId}"
         }
+        # disabled due to speed and quotes needs escaping
         response, headers = send_request(params)
         fullname = response.css("FullName").first
         fullname = fullname.text unless fullname.nil?
-        #results[org['name']] = orgId
         results[fullname] = orgId
+        #results[org['name']] = orgId
+
       end
       results
+
     end
 
     ##
@@ -429,14 +434,40 @@ module VCloud
 
     end
 
-    def providervdcs_query
+    def providervdcs
         params ={
           'method' => :get,
           'command' => "/query?type=providerVdc"
         }
         response, headers = send_request(params)
+        pvdcs = response.css('VMWProviderVdcRecord')
 
-        response
+        results = {}
+        pvdcs.each do |providervdc|
+          providervdcId = providervdc['href'].gsub("#{@api_url}/admin/providervdc/", "")
+          results[providervdc['name']] = providervdcId
+
+        end
+        results
+
+    end
+
+    def providervdc(providervdcId)
+        params = {
+          'method' => :get,
+          'command' => "/query?type=providerVdc&filter=id==#{providervdcId}"
+        }
+        response, headers = send_request(params)
+        pvdc = response.css('VMWProviderVdcRecord')
+
+        # {
+        #   :cpuAllocationMhz => pvdc.cpuAllocationMhz,
+        #   :cpuLimitMhz => pvdc.cpuLimitMhz,
+        #   :cpuUsedMhz => pvdc.cpuUsedMhz
+
+        # }
+        pvdc
+
     end
 
     private
@@ -460,9 +491,8 @@ module VCloud
                                          :verify_ssl => false,
                                          :payload => payload)
         begin
-	  p  "(DEBUG: query) #{@api_url}#{params['command']}"
-	  #p headers
-	  #p payload
+          puts  "[DEBUG: API request] #{@api_url}#{params['command']}" if OPTIONS[:debug]
+
           response = request.execute
           if ![200, 201, 202, 204].include?(response.code)
             puts "Warning: unattended code #{response.code}"
@@ -496,10 +526,10 @@ module VCloud
           body = Nokogiri.parse(e.http_body)
           message = body.css("Error").first["message"]
           raise InternalServerError, "Internal Server Error: #{message}."
-	rescue RestClient::NotAcceptable => e
-	  body = Nokogiri.parse(e.http_body)
-	  message = body.css("Error").first["message"]
-	  raise InternalServerError, "NotAcceptable: #{message}." 
+        rescue RestClient::NotAcceptable => e
+          body = Nokogiri.parse(e.http_body)
+          message = body.css("Error").first["message"]
+          raise InternalServerError, "NotAcceptable: #{message}." 
         end
       end
 
@@ -526,6 +556,7 @@ optparse = OptionParser.new do |opts|
     opts.separator "\t\t\t\t\t #{query}"
   end
   opts.on('-i', '--items ITEMs', String, 'Comma separated list of items to query on vCloud') { |v| OPTIONS[:items] = v }
+  opts.on('-d', '--debug') { OPTIONS[:debug] = true }
 
   opts.separator ""
 end
@@ -550,42 +581,43 @@ begin
        exit(-1)
 end
 
+if OPTIONS[:debug] 
+  puts "[DEBUG: On]"
+end
+
 if QUERIES.include? OPTIONS[:query]
 
   # connect to vCloud api
-	session = VCloud::Connection.new(OPTIONS[:url], OPTIONS[:login], OPTIONS[:password], OPTIONS[:organization], '5.1')
+  session = VCloud::Connection.new(OPTIONS[:url], OPTIONS[:login], OPTIONS[:password], OPTIONS[:organization], '5.1')
   session.login
 
 
   case OPTIONS[:query]
 
   # produce discovery on organization or vdc
-  when /(organization|vdc)s.discovery/
+  when /(organization|vdc|providervdc)s.discovery/
     type = OPTIONS[:query].split(/\./)
 
-    if type[0] == "vdcs"
+    case type[0] 
+    when "vdcs"
       query = session.vdcs
-      puts JSON.pretty_generate(query)
+      puts JSON.pretty_generate(query) if OPTIONS[:DEBUG]
 
-    else
+    when "organizations"
       query = session.organizations
+      puts JSON.pretty_generate(query) if OPTIONS[:DEBUG]
+
+    when "providervdcs"
+      query = session.providervdcs
+      puts JSON.pretty_generate(query) if OPTIONS[:DEBUG]
+
     end
+  
+    qmap = query.map  { |key,value| { "{#ID}":value,  "{##{type[0].upcase.chop}}":key} }  
+    json = {data:qmap}
+    #puts "Alt"
+    puts JSON.pretty_generate(json)
 
-    # begin json document
-    puts "{  \"data\":["
-
-    x = 0
-    query.each do |key,value|
-      x += 1
-      if x < query.count
-        puts "{ \"{#ID}\":\"#{value}\", \"{##{type[0].upcase.chop}}\":\"#{key}\"},"
-      else
-        puts "{ \"{#ID}\":\"#{value}\", \"{##{type[0].upcase.chop}}\":\"#{key}\"}"
-      end
-    end
-
-    # end json document
-    puts "] }"
 
   # get organization associated to a vdc
   when "vdc.organization"
@@ -631,7 +663,11 @@ if QUERIES.include? OPTIONS[:query]
     puts query[:storage_profiles][items[1]][keys[2].to_sym]
 
   when /providervdc.query/
-    puts session.providervdcs_query
+    #json = {data:[]}
+    items = OPTIONS[:items].split(/,/)
+    query = session.providervdc(items[0]) unless OPTIONS[:items].nil?
+  
+    puts query
 
   else
     puts "Query not yet implemented\n"
