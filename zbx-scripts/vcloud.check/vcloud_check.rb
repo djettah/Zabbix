@@ -181,7 +181,7 @@ module VCloud
       @username = username
       @password = password
       @org_name = org_name
-      @api_version = (api_version || "5.1")
+      @api_version = (api_version || "9.0")
     end
 
     ##
@@ -232,12 +232,12 @@ module VCloud
           'method' => :get,
           'command' => "/org/#{orgId}"
         }
-        # disabled due to speed and quotes needs escaping
-        response, headers = send_request(params)
-        fullname = response.css("FullName").first
-        fullname = fullname.text unless fullname.nil?
-        results[fullname] = orgId
-        #results[org['name']] = orgId
+        # disabled due to speed and non-unique fullnames
+        # response, headers = send_request(params)
+        # fullname = response.css("FullName").first
+        # fullname = fullname.text unless fullname.nil?
+        # results[fullname] = orgId
+        results[org['name']] = orgId
 
       end
       results
@@ -438,21 +438,34 @@ module VCloud
     end
 
     def providervdcs
-        params ={
-          'method' => :get,
-          'command' => "/query?type=providerVdc"
-        }
-        response, headers = send_request(params)
-        pvdcs = response.css('VMWProviderVdcRecord')
-
+        next_page = true
+        next_page_url = false
+        page_size = 128
+        page_current = 0
+        page_limit = 50
         results = {}
-        pvdcs.each do |providervdc|
-          providervdcId = providervdc['href'].gsub("#{@api_url}/admin/providervdc/", "")
-          results[providervdc['name']] = providervdcId
 
+        while next_page && page_current < page_limit
+          params ={
+            'method' => :get,
+            'command' => (next_page_url || "/query?type=providerVdc&pageSize=#{page_size}")
+          }
+
+          response, headers = send_request(params)
+
+          pvdcs = response.css('VMWProviderVdcRecord')
+          pvdcs.each do |providervdc|
+            providervdcId = providervdc['href'].gsub("#{@api_url}/admin/providervdc/", "")
+            results[providervdc['name']] = providervdcId
+          end
+
+          next_page = response.css('Link[rel="nextPage"]').first #
+          next_page_url = next_page[:href].gsub("#{@api_url}", "") if next_page
+          page_current+=1
+          raise "providervdcs: Query page limit (#{page_limit}) exceeded." if next_page && page_current == page_limit 
         end
+        
         results
-
     end
 
     def providervdc_query(providervdcId)
@@ -463,14 +476,7 @@ module VCloud
         response, headers = send_request(params)
         pvdc = response.css('VMWProviderVdcRecord')
 
-        # {
-        #   :cpuAllocationMhz => pvdc.cpuAllocationMhz,
-        #   :cpuLimitMhz => pvdc.cpuLimitMhz,
-        #   :cpuUsedMhz => pvdc.cpuUsedMhz
-
-        # }
         pvdc
-
     end
 
     def vdc_query(vdcId)
@@ -479,16 +485,9 @@ module VCloud
           'command' => "/admin/extension/orgVdcs/query?filter=id==#{vdcId}"
         }
         response, headers = send_request(params)
-        pvdc = response.css('AdminVdcRecord')
+        vdc = response.css('AdminVdcRecord')
 
-        # {
-        #   :cpuAllocationMhz => pvdc.cpuAllocationMhz,
-        #   :cpuLimitMhz => pvdc.cpuLimitMhz,
-        #   :cpuUsedMhz => pvdc.cpuUsedMhz
-
-        # }
-        pvdc
-
+        vdc
     end
 
 
@@ -496,7 +495,7 @@ module VCloud
       ##
       # Sends a synchronous request to the vCloud API and returns the response as parsed XML + headers.
       def send_request(params, payload=nil, content_type=nil)
-        headers = {:accept => "application/*+xml;version=#{@api_version}"}
+        headers = {:accept => "application/*;version=#{@api_version}"}
         if @auth_key
           headers.merge!({:x_vcloud_authorization => @auth_key})
         end
@@ -514,6 +513,8 @@ module VCloud
                                          :payload => payload)
         begin
           puts  "[DEBUG: API request] #{@api_url}#{params['command']}" if OPTIONS[:debug]
+          puts  "[DEBUG: API request] headers: #{headers}" if OPTIONS[:debug]
+          puts  "[DEBUG: API request] user: #{@username}@#{@org_name}" if OPTIONS[:debug]
 
           response = request.execute
           if ![200, 201, 202, 204].include?(response.code)
@@ -578,8 +579,10 @@ optparse = OptionParser.new do |opts|
     opts.separator "\t\t\t\t\t #{query}"
   end
   opts.on('-i', '--items ITEMs', String, 'Comma separated list of items to query on vCloud') { |v| OPTIONS[:items] = v }
-  opts.on('-d', '--debug') { OPTIONS[:debug] = true }
+  opts.on('-v', '--version VERSION', String, 'vCloud url to connect to') { |v| OPTIONS[:url] = v }
 
+  opts.on('-a', '--api VERSION', String, 'vCloud API version to use') { |v| OPTIONS[:api] = v }
+  opts.on('-d', '--debug') { OPTIONS[:debug] = true }
   opts.separator ""
 end
 
@@ -610,7 +613,7 @@ end
 if QUERIES.include? OPTIONS[:query]
 
   # connect to vCloud api
-  session = VCloud::Connection.new(OPTIONS[:url], OPTIONS[:login], OPTIONS[:password], OPTIONS[:organization], '5.1')
+  session = VCloud::Connection.new(OPTIONS[:url], OPTIONS[:login], OPTIONS[:password], OPTIONS[:organization], OPTIONS[:api])
   session.login
 
 
