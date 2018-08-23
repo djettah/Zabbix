@@ -91,6 +91,8 @@ QUERIES = %w(
   providervdcs.discovery
   providervdc.query
   vdc.query
+  datastores.discovery
+  datastore.query
 )
 
 class Hash
@@ -468,6 +470,38 @@ module VCloud
         results
     end
 
+    def datastores
+        next_page = true
+        next_page_url = false
+        page_size = 128
+        page_current = 0
+        page_limit = 50
+        results = {}
+
+        while next_page && page_current < page_limit
+          params ={
+            'method' => :get,
+            'command' => (next_page_url || "/query?type=datastore&pageSize=#{page_size}")
+          }
+
+          response, headers = send_request(params)
+
+          datastores = response.css('DatastoreRecord')
+          datastores.each do |datastore|
+            datastoreId = datastore['href'].gsub("#{@api_url}/admin/extension/datastore/", "")
+            results[datastore['name']] = datastoreId
+          end
+
+          next_page = response.css('Link[rel="nextPage"]').first #
+          next_page_url = next_page[:href].gsub("#{@api_url}", "") if next_page
+          page_current+=1
+          raise "providervdcs: Query page limit (#{page_limit}) exceeded." if next_page && page_current == page_limit 
+        end
+        
+        results
+    end
+
+
     def providervdc_query(providervdcId)
         params = {
           'method' => :get,
@@ -490,6 +524,16 @@ module VCloud
         vdc
     end
 
+    def datastore_query(vdcId)
+        params = {
+          'method' => :get,
+          'command' => "/admin/extension/datastores/query?filter=id==#{vdcId}"
+        }
+        response, headers = send_request(params)
+        datastore = response.css('DatastoreRecord')
+
+        datastore
+    end
 
     private
       ##
@@ -620,7 +664,7 @@ if QUERIES.include? OPTIONS[:query]
   case OPTIONS[:query]
 
   # produce discovery on organization or vdc
-  when /(organization|vdc|providervdc)s.discovery/
+  when /(organization|vdc|providervdc|datastore)s.discovery/
     type = OPTIONS[:query].split(/\./)
 
     case type[0] 
@@ -634,6 +678,10 @@ if QUERIES.include? OPTIONS[:query]
 
     when "providervdcs"
       query = session.providervdcs
+      puts JSON.pretty_generate(query) if OPTIONS[:DEBUG]
+
+    when "datastores"
+      query = session.datastores
       puts JSON.pretty_generate(query) if OPTIONS[:DEBUG]
 
     end
@@ -687,18 +735,13 @@ if QUERIES.include? OPTIONS[:query]
     #p items
     puts query[:storage_profiles][items[1]][keys[2].to_sym]
 
-  when /providervdc.query/
+  when /^(vdc|providervdc|datastore).query/
+    type = OPTIONS[:query].split(/\./)
+    query_type = (type[0] + "_query").to_sym
     #json = {data:[]}
     items = OPTIONS[:items].split(/,/)
-    query = session.providervdc_query(items[0]) unless OPTIONS[:items].nil?
-  
-    puts query
+    query = session.send(query_type,items[0]) unless OPTIONS[:items].nil?
 
-  when /^vdc.query/
-    #json = {data:[]}
-    items = OPTIONS[:items].split(/,/)
-    query = session.vdc_query(items[0]) unless OPTIONS[:items].nil?
-  
     puts query
 
   else
