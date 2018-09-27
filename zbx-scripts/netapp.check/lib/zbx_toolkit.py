@@ -5,9 +5,12 @@ from urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 import json
 from zabbix.api import ZabbixAPI
+from subprocess import Popen, PIPE, STDOUT
 
 import debug_toolkit
 from debug_toolkit import deflogger, dry_request
+
+
 
 HEADERS = {"Content-Type": "application/json", "Accept": "application/json"}
 
@@ -227,6 +230,7 @@ def get_items(token, host, item_type, output="extend", DRYRUN=False):
     if item_type == 'host':
         params['selectInventory'] = ["location", "location_lon", "location_lat"]
         params['selectParentTemplates'] = ["host","name"]
+        params['selectGroups'] = ["groupid"]
 
     payload = {
                 "jsonrpc": "2.0",
@@ -391,3 +395,20 @@ def update_host_inventory(token, url, host, host_id):
         else:
             if "location" in host.keys():
                 print("Host ID:", host_id, "new host location:", host["location"])
+
+
+def send_trapper_data(sender_param, sender_items):
+    # sender_items = "\n".join( ["- {} {}".format(key, str(sender_dict[key])) for key in sender_dict]) + '\n'
+    # sender_param = 'zabbix_sender -c /etc/zabbix/zabbix_agentd.conf -i -'.split(" ")
+
+    if not debug_toolkit.DRYRUN:
+        try:
+            proc  = Popen(args=sender_param, stdin=PIPE, stdout=PIPE, stderr=PIPE)  
+            sender_stdout = proc.communicate(input=bytearray(sender_items,'utf-8'))[0]
+            return True
+        except:
+            #logger.warn ("[send_trapper_data] Error calling zabbix_sender.")
+            return False
+    else:
+        if debug_toolkit.DEBUG: 
+            print ("{} [send_trapper_data] Would send data to zbx:\n{}".format(datetime.now(), sender_items))
