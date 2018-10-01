@@ -32,27 +32,37 @@ class OCUM_API(object):
 
             if discovery:
                 data = []
-        
+                
+
                 for item in output:
                     discovery_item = []
-                    if item_type == "aggregate":
-                        discovery_item = {
-                            '{#AGGR_NAME}'   : item['aggregate']['label'],
-                            '{#AGGR_ID}'     : item['aggregate']['id'],
-                            '{#NODE_NAME}'   : item['node']['label'],
-                            '{#NODE_ID}'     : item['node']['id'],
+                    common_items = {
                             '{#CLUS_NAME}'   : item['cluster']['label'],
                             '{#CLUS_ID}'     : item['cluster']['id'],
                             '{#STATUS}'      : item['status']
+                    }
+
+                    if item_type == "aggregate":
+                        discovery_item = {
+                            '{#AGGR_NAME}'   : item[item_type]['label'],
+                            '{#AGGR_ID}'     : item[item_type]['id'],
+                            '{#NODE_NAME}'   : item['node']['label'],
+                            '{#NODE_ID}'     : item['node']['id'],
+                            **common_items
                         }
 
                     if item_type == "svm":
                         discovery_item = {
-                            '{#SVM_NAME}'   : item['svm']['label'],
-                            '{#SVM_ID}'     : item['svm']['id'],
-                            '{#CLUS_NAME}'   : item['cluster']['label'],
-                            '{#CLUS_ID}'     : item['cluster']['id'],
-                            '{#STATUS}'      : item['status']
+                            '{#SVM_NAME}'   : item[item_type]['label'],
+                            '{#SVM_ID}'     : item[item_type]['id'],
+                            **common_items
+                        }
+
+                    if item_type == "volume":
+                        discovery_item = {
+                            '{#VOL_NAME}'   : item[item_type]['label'],
+                            '{#VOL_ID}'     : item[item_type]['id'],
+                            **common_items
                         }
 
 
