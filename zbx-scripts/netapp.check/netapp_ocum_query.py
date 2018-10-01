@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3
 
 import requests
 import sys
@@ -47,24 +47,22 @@ class OCUM_API(object):
                             '{#AGGR_NAME}'   : item[item_type]['label'],
                             '{#AGGR_ID}'     : item[item_type]['id'],
                             '{#NODE_NAME}'   : item['node']['label'],
-                            '{#NODE_ID}'     : item['node']['id'],
-                            **common_items
-                        }
+                            '{#NODE_ID}'     : item['node']['id']
+                            }
 
                     if item_type == "svm":
                         discovery_item = {
                             '{#SVM_NAME}'   : item[item_type]['label'],
-                            '{#SVM_ID}'     : item[item_type]['id'],
-                            **common_items
-                        }
+                            '{#SVM_ID}'     : item[item_type]['id']
+                            }
 
                     if item_type == "volume":
                         discovery_item = {
                             '{#VOL_NAME}'   : item[item_type]['label'],
-                            '{#VOL_ID}'     : item[item_type]['id'],
-                            **common_items
-                        }
+                            '{#VOL_ID}'     : item[item_type]['id']
+                            }
 
+                    discovery_item.update(common_items)
 
                     if discovery_item: data.append(discovery_item)
 
